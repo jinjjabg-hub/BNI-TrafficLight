@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BNI 트래픽 라이트</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config={darkMode:"class",theme:{extend:{
+  colors:{"surface-bright":"#fbf9f4","surface-white":"#FFFFFF","status-amber":"#F59E0B","status-green":"#22C55E","status-red":"#CF202E","status-grey":"#94A3B8","primary":"#a9001c","primary-container":"#cf202e","on-primary":"#ffffff","on-primary-container":"#ffe6e4","on-primary-fixed":"#410005","secondary":"#605e59","secondary-container":"#e6e2db","on-secondary":"#ffffff","on-secondary-container":"#66645f","on-secondary-fixed":"#1d1c18","background":"#fbf9f4","surface":"#fbf9f4","surface-dim":"#dcdad5","on-background":"#1b1c19","on-surface":"#1b1c19","on-surface-variant":"#5c403e","surface-container":"#f0eee9","surface-container-low":"#f5f3ee","surface-container-high":"#eae8e3","surface-container-highest":"#e4e2dd","surface-container-lowest":"#ffffff","border-muted":"#E2E8F0","outline-variant":"#e5bdba","outline":"#906f6d"},
+  borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},
+  spacing:{"stack-md":"16px","stack-lg":"24px","stack-sm":"8px","margin-mobile":"16px"},
+  fontFamily:{"body-md":["Inter"],"label-caps":["Inter"],"headline-md":["Inter"],"headline-sm":["Inter"],"body-sm":["Inter"],"data-tabular":["Inter"],"display-lg":["Inter"]},
+  fontSize:{"body-md":["14px",{lineHeight:"20px",fontWeight:"400"}],"label-caps":["11px",{lineHeight:"16px",letterSpacing:"0.05em",fontWeight:"700"}],"headline-md":["20px",{lineHeight:"28px",fontWeight:"600"}],"headline-sm":["16px",{lineHeight:"24px",fontWeight:"600"}],"body-sm":["12px",{lineHeight:"16px",fontWeight:"400"}],"data-tabular":["14px",{lineHeight:"20px",fontWeight:"600"}],"display-lg":["32px",{lineHeight:"40px",letterSpacing:"-0.02em",fontWeight:"700"}]}
+}}}
+</script>
+<style>
+.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;vertical-align:middle;display:inline-block;}
+.hide-scrollbar::-webkit-scrollbar{display:none;}
+.hide-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
+.traffic-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.card-shadow{box-shadow:0 4px 12px rgba(0,0,0,0.03);}
+body{background-color:#fbf9f4;font-family:'Inter',sans-serif;min-height:100dvh;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeUp .3s ease-out both;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.animate-spin{animation:spin .8s linear infinite;}
+</style>
+</head>
+<body class="text-on-background pb-28">
+
+<!-- TOP APP BAR -->
+<header class="w-full top-0 sticky z-40 bg-surface border-b border-border-muted flex items-center justify-between px-4 h-14">
+  <div class="flex items-center gap-2">
+    <h1 class="font-headline-md text-headline-md font-bold text-primary">BNI 트래픽 라이트</h1>
+  </div>
+  <div class="flex items-center gap-2">
+    <span id="loading-icon" class="hidden material-symbols-outlined text-secondary animate-spin text-[20px]">refresh</span>
+    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">송</div>
+  </div>
+</header>
+
+<main>
+<!-- ===== DASHBOARD ===== -->
+<div id="page-dashboard" class="max-w-md mx-auto px-4 pt-4 space-y-4">
+  <div id="dash-nodata" class="hidden flex flex-col items-center justify-center py-24 text-center gap-4">
+    <span class="material-symbols-outlined text-5xl text-secondary">cloud_off</span>
+    <p class="font-headline-sm text-headline-sm">Google Sheets 연동 필요</p>
+    <p class="font-body-sm text-body-sm text-secondary">Settings에서 시트 주소를 입력하면<br>자동으로 데이터를 불러옵니다</p>
+    <button onclick="switchPage('settings')" class="mt-2 px-5 py-2.5 bg-primary text-on-primary rounded-xl font-label-caps text-label-caps">Settings 바로가기</button>
+  </div>
+  <section id="dash-chapter" class="hidden bg-surface-white border border-border-muted p-4 rounded-xl card-shadow">
+    <div class="flex justify-between items-start mb-2">
+      <div>
+        <h2 class="font-headline-sm text-headline-sm">파이오니어 수요일</h2>
+        <p class="font-body-sm text-body-sm text-secondary" id="dash-meta">-</p>
+      </div>
+      <button onclick="loadAllData()" class="p-2 bg-surface-container rounded-lg">
+        <span class="material-symbols-outlined text-on-surface-variant text-[20px]">refresh</span>
+      </button>
+    </div>
+    <div class="flex gap-2 overflow-x-auto hide-scrollbar pt-1" id="dash-months"></div>
+  </section>
+  <section id="dash-kpi" class="hidden grid grid-cols-2 gap-3">
+    <div class="bg-surface-white border border-border-muted p-4 rounded-xl card-shadow flex flex-col justify-between h-28 border-l-4 border-l-status-green">
+      <span class="font-label-caps text-label-caps text-secondary">그린 멤버</span>
+      <div class="flex items-baseline gap-1"><span class="font-display-lg text-display-lg text-status-green" id="kpi-green">-</span><span class="font-body-sm text-body-sm text-secondary">명</span></div>
+    </div>
+    <div class="bg-surface-white border border-border-muted p-4 rounded-xl card-shadow flex flex-col justify-between h-28 border-l-4 border-l-status-amber">
+      <span class="font-label-caps text-label-caps text-secondary">앰버 멤버</span>
+      <div class="flex items-baseline gap-1"><span class="font-display-lg text-display-lg text-status-amber" id="kpi-amber">-</span><span class="font-body-sm text-body-sm text-secondary">명</span></div>
+    </div>
+    <div class="bg-surface-white border border-border-muted p-4 rounded-xl card-shadow flex flex-col justify-between h-28 border-l-4 border-l-status-red">
+      <span class="font-label-caps text-label-caps text-secondary">레드 멤버</span>
+      <div class="flex items-baseline gap-1"><span class="font-display-lg text-display-lg text-status-red" id="kpi-red">-</span><span class="font-body-sm text-body-sm text-secondary">명</span></div>
+    </div>
+    <div class="bg-surface-white border border-border-muted p-4 rounded-xl card-shadow flex flex-col justify-between h-28 border-l-4 border-l-status-grey">
+      <span class="font-label-caps text-label-caps text-secondary">그레이 멤버</span>
+      <div class="flex items-baseline gap-1"><span class="font-display-lg text-display-lg text-status-grey" id="kpi-grey">-</span><span class="font-body-sm text-body-sm text-secondary">명</span></div>
+    </div>
+  </section>
+  <section id="dash-chart" class="hidden bg-surface-white border border-border-muted p-4 rounded-xl card-shadow">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-headline-sm text-headline-sm">챕터 건강도</h3>
+      <span id="health-badge" class="font-label-caps text-label-caps px-2 py-0.5 rounded"></span>
+    </div>
+    <div class="relative h-40 flex items-end justify-between gap-2 px-2">
+      <div class="flex flex-col items-center gap-2 flex-1"><div id="bar-green" class="w-full bg-status-green rounded-t-lg transition-all duration-700" style="height:0%"></div><span class="font-label-caps text-label-caps text-secondary">그린</span></div>
+      <div class="flex flex-col items-center gap-2 flex-1"><div id="bar-amber" class="w-full bg-status-amber rounded-t-lg transition-all duration-700" style="height:0%"></div><span class="font-label-caps text-label-caps text-secondary">앰버</span></div>
+      <div class="flex flex-col items-center gap-2 flex-1"><div id="bar-red" class="w-full bg-status-red rounded-t-lg transition-all duration-700" style="height:0%"></div><span class="font-label-caps text-label-caps text-secondary">레드</span></div>
+      <div class="flex flex-col items-center gap-2 flex-1"><div id="bar-grey" class="w-full bg-status-grey rounded-t-lg transition-all duration-700" style="height:0%"></div><span class="font-label-caps text-label-caps text-secondary">그레이</span></div>
+    </div>
+  </section>
+  <section id="dash-quicklist" class="hidden space-y-3">
+    <div class="flex justify-between items-center">
+      <h3 class="font-headline-sm text-headline-sm">전체 멤버 현황</h3>
+      <button onclick="switchPage('members')" class="text-primary font-label-caps text-label-caps flex items-center gap-1">전체보기 <span class="material-symbols-outlined text-[14px]">chevron_right</span></button>
+    </div>
+    <div id="dash-member-list" class="space-y-2"></div>
+  </section>
+  <footer class="text-center py-6"><p class="font-body-sm text-body-sm text-secondary opacity-60">제작 : BNI부산 파이오니어 챕터 송승훈</p></footer>
+</div>
+
+<!-- ===== MEMBERS ===== -->
+<div id="page-members" class="hidden max-w-md mx-auto px-4 pt-4 space-y-4">
+  <section class="space-y-3">
+    <div class="flex justify-between items-end">
+      <div><p class="font-label-caps text-label-caps text-secondary uppercase">Active Status</p><h2 class="font-headline-sm text-headline-sm">파이오니어 전체 현황</h2></div>
+      <p class="font-body-sm text-body-sm text-secondary" id="members-date-label">-</p>
+    </div>
+    <div class="flex gap-2 overflow-x-auto hide-scrollbar" id="members-months"></div>
+    <div class="relative">
+      <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-[20px]">search</span>
+      <input id="member-search" class="w-full pl-10 pr-4 py-3 bg-surface-white border border-border-muted rounded-xl outline-none focus:ring-2 focus:ring-primary font-body-md text-body-md" placeholder="멤버 검색" oninput="renderMemberList()"/>
+    </div>
+  </section>
+  <section class="grid grid-cols-2 gap-2" id="members-kpi"></section>
+  <div class="bg-surface-container flex p-1 rounded-lg" id="filter-tabs">
+    <button class="flex-1 py-1.5 rounded-md font-label-caps text-label-caps bg-surface-white shadow-sm text-on-surface" onclick="setFilter('all',this)">전체</button>
+    <button class="flex-1 py-1.5 rounded-md font-label-caps text-label-caps text-secondary" onclick="setFilter('Green',this)">그린</button>
+    <button class="flex-1 py-1.5 rounded-md font-label-caps text-label-caps text-secondary" onclick="setFilter('Amber',this)">앰버</button>
+    <button class="flex-1 py-1.5 rounded-md font-label-caps text-label-caps text-secondary" onclick="setFilter('Red',this)">레드</button>
+    <button class="flex-1 py-1.5 rounded-md font-label-caps text-label-caps text-secondary" onclick="setFilter('Grey',this)">그레이</button>
+  </div>
+  <section class="bg-surface-white rounded-xl border border-border-muted overflow-hidden card-shadow">
+    <div class="grid grid-cols-12 gap-2 px-4 py-3 bg-surface-container-low border-b border-border-muted">
+      <div class="col-span-4 font-label-caps text-label-caps text-secondary">멤버</div>
+      <div class="col-span-3 text-center font-label-caps text-label-caps text-secondary">점수</div>
+      <div class="col-span-5 text-right font-label-caps text-label-caps text-secondary">상태</div>
+    </div>
+    <div id="member-table-list" class="divide-y divide-border-muted"></div>
+  </section>
+</div>
+
+<!-- ===== PERSONAL ===== -->
+<div id="page-personal" class="hidden max-w-md mx-auto px-4 pt-4 space-y-4">
+  <div class="bg-surface-white border border-border-muted p-4 rounded-xl card-shadow space-y-3">
+    <div>
+      <p class="font-label-caps text-label-caps text-secondary mb-1">멤버 선택</p>
+      <select id="personal-select" class="w-full py-2.5 px-3 bg-surface-container border border-border-muted rounded-lg font-body-md text-body-md outline-none" onchange="onPersonalMemberChange()">
+        <option value="">멤버를 선택하세요</option>
+      </select>
+    </div>
+    <div class="bg-surface-container flex p-1 rounded-lg" id="personal-months-tabs"></div>
+  </div>
+  <section id="personal-summary" class="hidden bg-surface-white border border-border-muted rounded-xl p-4 card-shadow fade-up">
+    <div class="flex justify-between items-start mb-4">
+      <div>
+        <span class="font-label-caps text-label-caps text-secondary uppercase tracking-widest">PERSONAL PERFORMANCE</span>
+        <h2 class="font-display-lg text-display-lg text-on-surface mt-1" id="p-name">-</h2>
+        <p class="font-body-sm text-body-sm text-on-secondary-container">파이오니어 챕터</p>
+      </div>
+      <div class="flex flex-col items-end">
+        <div class="w-16 h-16 relative flex items-center justify-center">
+          <svg class="w-full h-full transform -rotate-90" viewBox="0 0 64 64">
+            <circle cx="32" cy="32" fill="transparent" r="28" stroke="#f0eee9" stroke-width="6"/>
+            <circle id="p-circle" cx="32" cy="32" fill="transparent" r="28" stroke="#22C55E" stroke-dasharray="176" stroke-dashoffset="176" stroke-width="6" style="transition:stroke-dashoffset .7s ease-out,stroke .3s"/>
+          </svg>
+          <span class="absolute font-data-tabular text-[11px]" id="p-score-circle">-</span>
+        </div>
+        <span id="p-badge" class="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full font-label-caps text-[10px]">
+          <span class="w-1.5 h-1.5 rounded-full" id="p-badge-dot"></span>
+          <span id="p-badge-text">-</span>
+        </span>
+      </div>
+    </div>
+  </section>
+  <div id="personal-metrics" class="hidden grid grid-cols-2 gap-3 fade-up">
+    <div class="bg-surface-white border border-border-muted rounded-xl p-4 flex flex-col justify-between">
+      <p class="font-label-caps text-label-caps text-secondary">출석/결석</p>
+      <p class="font-headline-md text-headline-md mt-1" id="m-attend">-</p>
+      <div class="mt-4 pt-2 border-t border-border-muted flex justify-between items-center">
+        <span class="font-body-sm font-semibold" id="m-attend-lbl">-</span>
+        <span class="material-symbols-outlined text-sm" id="m-attend-icon">check_circle</span>
+      </div>
+    </div>
+    <div class="bg-surface-white border border-border-muted rounded-xl p-4 flex flex-col justify-between">
+      <p class="font-label-caps text-label-caps text-secondary">리퍼럴</p>
+      <p class="font-headline-md text-headline-md mt-1" id="m-ref">-</p>
+      <div class="mt-4 pt-2 border-t border-border-muted flex justify-between items-center">
+        <span class="font-body-sm font-semibold" id="m-ref-lbl">-</span>
+        <span class="material-symbols-outlined text-sm" id="m-ref-icon">check_circle</span>
+      </div>
+    </div>
+    <div class="bg-surface-white border border-border-muted rounded-xl p-4 flex flex-col justify-between">
+      <p class="font-label-caps text-label-caps text-secondary">비지터</p>
+      <p class="font-headline-md text-headline-md mt-1" id="m-visitor">-</p>
+      <div class="mt-4 pt-2 border-t border-border-muted flex justify-between items-center">
+        <span class="font-body-sm font-semibold" id="m-visitor-lbl">-</span>
+        <span class="material-symbols-outlined text-sm" id="m-visitor-icon">check_circle</span>
+      </div>
+    </div>
+    <div class="bg-surface-white border border-border-muted rounded-xl p-4 flex flex-col justify-between">
+      <p class="font-label-caps text-label-caps text-secondary">1:1 원투원</p>
+      <p class="font-headline-md text-headline-md mt-1" id="m-121">-</p>
+      <div class="mt-4 pt-2 border-t border-border-muted flex justify-between items-center">
+        <span class="font-body-sm font-semibold" id="m-121-lbl">-</span>
+        <span class="material-symbols-outlined text-sm" id="m-121-icon">check_circle</span>
+      </div>
+    </div>
+  </div>
+  <section id="personal-scores" class="hidden bg-surface-white border border-border-muted rounded-xl p-4 card-shadow fade-up">
+    <h3 class="font-label-caps text-label-caps text-secondary mb-3 flex items-center gap-2">
+      <span class="material-symbols-outlined text-[16px]">analytics</span> 점수 분석
+    </h3>
+    <div id="score-breakdown" class="divide-y divide-border-muted"></div>
+  </section>
+  <section id="personal-feedback" class="hidden space-y-2 fade-up">
+    <h3 class="font-label-caps text-label-caps text-secondary flex items-center gap-2">
+      <span class="material-symbols-outlined text-[16px]">chat_bubble</span> 목표별 피드백
+    </h3>
+    <div id="feedback-cards" class="space-y-2"></div>
+  </section>
+  <div id="personal-actions" class="hidden space-y-3 pb-8 fade-up">
+    <button onclick="copyFeedback()" class="w-full bg-primary py-4 rounded-xl flex items-center justify-center gap-3 text-on-primary font-headline-sm active:scale-[0.98] transition-transform card-shadow">
+      <span class="material-symbols-outlined">content_copy</span>카톡 피드백 복사
+    </button>
+    <div class="bg-surface-white border border-border-muted rounded-xl p-4 text-center card-shadow">
+      <p class="font-label-caps text-label-caps text-secondary mb-3">🍀 오늘의 행운 번호</p>
+      <div class="flex justify-center gap-2 mb-3" id="lotto-balls">
+        <div class="w-10 h-10 rounded-full bg-surface-container border-2 border-dashed border-border-muted flex items-center justify-center text-secondary text-xs font-bold">?</div>
+        <div class="w-10 h-10 rounded-full bg-surface-container border-2 border-dashed border-border-muted flex items-center justify-center text-secondary text-xs font-bold">?</div>
+        <div class="w-10 h-10 rounded-full bg-surface-container border-2 border-dashed border-border-muted flex items-center justify-center text-secondary text-xs font-bold">?</div>
+        <div class="w-10 h-10 rounded-full bg-surface-container border-2 border-dashed border-border-muted flex items-center justify-center text-secondary text-xs font-bold">?</div>
+        <div class="w-10 h-10 rounded-full bg-surface-container border-2 border-dashed border-border-muted flex items-center justify-center text-secondary text-xs font-bold">?</div>
+        <div class="w-10 h-10 rounded-full bg-surface-container border-2 border-dashed border-border-muted flex items-center justify-center text-secondary text-xs font-bold">?</div>
+      </div>
+      <button onclick="drawLotto()" class="px-5 py-2 border border-primary text-primary bg-primary/5 rounded-xl font-label-caps text-label-caps">🎯 번호 뽑기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SETTINGS ===== -->
+<div id="page-settings" class="hidden max-w-md mx-auto px-4 pt-4 space-y-4">
+  <div><p class="font-label-caps text-label-caps text-secondary uppercase">Configuration</p><h2 class="font-headline-md text-headline-md">설정</h2></div>
+  <div class="bg-surface-white border border-border-muted rounded-xl p-4 card-shadow space-y-4">
+    <div>
+      <p class="font-headline-sm text-headline-sm mb-1">📊 Google Sheets 연동</p>
+      <p class="font-body-sm text-body-sm text-secondary">시트 주소만 한 번 입력하면 매번 엑셀을 올릴 필요 없이 자동으로 최신 데이터를 가져옵니다.</p>
+    </div>
+    <div>
+      <label class="font-label-caps text-label-caps text-secondary block mb-1">Google Sheets URL</label>
+      <input id="sheets-url-input" type="url" class="w-full px-3 py-2.5 bg-surface-container border border-border-muted rounded-lg font-body-md text-body-md outline-none focus:ring-2 focus:ring-primary" placeholder="https://docs.google.com/spreadsheets/d/..."/>
+      <p class="font-body-sm text-body-sm mt-1.5" id="sheets-status-text">연결 안됨</p>
+    </div>
+    <div class="bg-surface-container-low rounded-lg p-3 space-y-1.5">
+      <p class="font-label-caps text-label-caps text-on-surface">💡 설정 방법</p>
+      <p class="font-body-sm text-body-sm text-secondary">1. Google Sheets 열기 → 주소창 URL 그대로 복사</p>
+      <p class="font-body-sm text-body-sm text-secondary">2. 공유 → <strong>"링크 있는 모든 사용자 · 뷰어"</strong> 설정</p>
+      <p class="font-body-sm text-body-sm text-secondary">3. 시트 탭 이름은 <strong>2026-5</strong> 형식 유지</p>
+    </div>
+    <button onclick="saveAndConnect()" class="w-full bg-primary text-on-primary py-3 rounded-xl font-headline-sm active:scale-[0.98] transition-transform">저장 &amp; 연결하기</button>
+  </div>
+  <div class="bg-surface-white border border-border-muted rounded-xl p-4 card-shadow">
+    <p class="font-headline-sm text-headline-sm mb-3">📅 불러온 데이터</p>
+    <div id="settings-data-info"><p class="font-body-sm text-body-sm text-secondary">아직 연결된 데이터가 없어요</p></div>
+  </div>
+  <footer class="text-center py-6"><p class="font-body-sm text-body-sm text-secondary opacity-60">제작 : BNI부산 파이오니어 챕터 송승훈</p><p class="text-[10px] text-secondary opacity-40 mt-1">© 2026 BNI Traffic Light Predictor</p></footer>
+</div>
+</main>
+
+<!-- BOTTOM NAV -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-5 pt-2 bg-surface-container-lowest border-t border-border-muted shadow-sm">
+  <button onclick="switchPage('dashboard')" id="nav-dashboard" class="flex flex-col items-center justify-center px-4 py-1 rounded-full transition-all active:scale-95 bg-primary-container text-on-primary-container">
+    <span class="material-symbols-outlined">dashboard</span><span class="font-label-caps text-label-caps mt-0.5">Dashboard</span>
+  </button>
+  <button onclick="switchPage('members')" id="nav-members" class="flex flex-col items-center justify-center text-secondary px-4 py-1 transition-all active:scale-95">
+    <span class="material-symbols-outlined">group</span><span class="font-label-caps text-label-caps mt-0.5">Members</span>
+  </button>
+  <button onclick="switchPage('personal')" id="nav-personal" class="flex flex-col items-center justify-center text-secondary px-4 py-1 transition-all active:scale-95">
+    <span class="material-symbols-outlined">person</span><span class="font-label-caps text-label-caps mt-0.5">Personal</span>
+  </button>
+  <button onclick="switchPage('settings')" id="nav-settings" class="flex flex-col items-center justify-center text-secondary px-4 py-1 transition-all active:scale-95">
+    <span class="material-symbols-outlined">settings</span><span class="font-label-caps text-label-caps mt-0.5">Settings</span>
+  </button>
+</nav>
+
+<!-- TOAST -->
+<div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 bg-on-surface text-surface-white px-6 py-3 rounded-full font-body-md flex items-center gap-2 opacity-0 transition-opacity pointer-events-none z-[60] whitespace-nowrap">
+  <span class="material-symbols-outlined text-[20px] text-status-green">check_circle</span>
+  <span id="toast-msg">복사 완료!</span>
+</div>
+
+<script>
+let allData={},availMonths=[],monthWeeks={};
+let curDashMonth='',curMembersMonth='',curPersonalMonth='';
+let curFilter='all',selectedMember='';
+
+// ── 챕터 요일 (수요일=3) ───────────────────────────────────────────
+const CHAPTER_DOW=3;
+
+// ── 주수 계산 헬퍼 ────────────────────────────────────────────────
+function countDOW(y,m,dow){
+  let c=0,d=new Date(y,m-1,1);
+  while(d.getMonth()===m-1){if(d.getDay()===dow)c++;d.setDate(d.getDate()+1);}
+  return c;
+}
+function countDOWPast(y,m,dow){
+  const t=new Date();t.setHours(23,59,59);
+  let c=0,d=new Date(y,m-1,1);
+  while(d.getMonth()===m-1&&d<=t){if(d.getDay()===dow)c++;d.setDate(d.getDate()+1);}
+  return c;
+}
+function weeksInfo(key){
+  const[y,m]=key.split('-').map(Number);
+  const full=countDOW(y,m,CHAPTER_DOW);
+  const now=new Date();
+  const isCur=y===now.getFullYear()&&m===(now.getMonth()+1);
+  const actual=isCur?countDOWPast(y,m,CHAPTER_DOW):full;
+  return{full,actual,remain:full-actual};
+}
+function isFutureMonth(key){
+  const now=new Date(),[y,m]=key.split('-').map(Number);
+  return y>now.getFullYear()||(y===now.getFullYear()&&m>now.getMonth()+1);
+}
+
+// ── 6개월 롤링 집계 ───────────────────────────────────────────────
+function get6Keys(endKey){
+  const[y,m]=endKey.split('-').map(Number);
+  const keys=[];
+  for(let i=5;i>=0;i--){
+    let mm=m-i,yy=y;
+    if(mm<=0){mm+=12;yy--;}
+    keys.push(`${yy}-${mm}`);
+  }
+  return keys;
+}
+function agg6(name,endKey){
+  let absent=0,late=0,ref=0,visitor=0,meet=0,biz=0,train=0,weeks=0;
+  get6Keys(endKey).forEach(k=>{
+    const mb=(allData[k]||[]).find(x=>x.name===name);
+    if(!mb)return;
+    absent+=mb.absent;late+=mb.late;
+    ref+=mb.rgo+mb.rri;
+    visitor+=mb.visitor;meet+=mb.meeting121;
+    biz+=mb.bizValue;train+=mb.training;
+    // ★ 전체 멤버 기준 실제 주수 사용
+    weeks+=monthWeeks[k]||countDOW(...k.split('-').map(Number),CHAPTER_DOW);
+  });
+  return{absent,late,ref,visitor,meet,biz,train,weeks};
+}
+function getExtra(endKey){
+  const[ey,em]=endKey.split('-').map(Number);
+  const now=new Date(),cy=now.getFullYear(),cm=now.getMonth()+1;
+  if(isFutureMonth(endKey)){
+    let ex=weeksInfo(`${cy}-${cm}`).remain,yy=cy,mm=cm;
+    while(true){mm++;if(mm>12){mm=1;yy++;}
+      if(yy>ey||(yy===ey&&mm>em))break;
+      ex+=countDOW(yy,mm,CHAPTER_DOW);
+    }
+    return ex;
+  }
+  if(ey===cy&&em===cm)return weeksInfo(endKey).remain;
+  return 0;
+}
+function calcSc(ag,extra=0){
+  const W=ag.weeks+extra;
+  if(W===0)return{total:0,bd:{abs:0,time:0,refPt:0,visPt:0,oPt:0,bizPt:0,trPt:0},rates:{rW:0,vW:0,oW:0}};
+  const rW=ag.ref/W,vW=ag.visitor/W,oW=ag.meet/W;
+  // 출결 (6개월 누적 기준)
+  const abs=ag.absent>=3?0:ag.absent===2?5:ag.absent===1?10:15;
+  const time=ag.late>=2?0:ag.late===1?5:10;
+  // 리퍼럴 (주당 건수 기준)
+  const refPt=rW<0.5?0:rW<0.75?5:rW<1.0?10:rW<1.2?15:20;
+  // 비지터 (주당 기준 - 미팅당 0.25명이면 10점)
+  const visPt=vW<0.25?0:vW<0.5?10:vW<0.75?15:20;
+  // 원투원 (주당 기준)
+  const oPt=oW<1?0:oW<2?5:10;
+  // 감사장 금액 (6개월 누적)
+  const bizPt=ag.biz<25000000?0:ag.biz<50000000?5:ag.biz<100000000?10:15;
+  // 교육 (6개월 누적)
+  const trPt=ag.train<10?0:ag.train<20?5:10;
+  return{total:abs+time+refPt+visPt+oPt+bizPt+trPt,
+    bd:{abs,time,refPt,visPt,oPt,bizPt,trPt},rates:{rW,vW,oW}};
+}
+function mScore(name,endKey){
+  const ag=agg6(name,endKey),ex=getExtra(endKey),sc=calcSc(ag,ex);
+  return{...sc,traffic:scoreToTraffic(sc.total),agg:ag,extra:ex};
+}
+
+// ── 개인탭용 월 목록 (실제 + 미래 3개월) ─────────────────────────
+function getPersonalMonths(){
+  if(!availMonths.length)return[];
+  const months=[...availMonths];
+  const[y0,m0]=months[0].split('-').map(Number);
+  let yy=y0,mm=m0;
+  for(let i=0;i<3;i++){
+    mm++;if(mm>12){mm=1;yy++;}
+    const k=`${yy}-${mm}`;
+    if(!months.includes(k))months.unshift(k);
+  }
+  return months;
+}
+function monthLabel(key){
+  if(isFutureMonth(key))return fmtMonth(key)+' 예상';
+  if(isCurrentMonth(key))return fmtMonth(key)+' 예상';
+  return fmtMonth(key)+' 확정';
+}
+
+window.onload=async()=>{
+  const saved=localStorage.getItem('bni_sheets_url')||'';
+  if(saved){document.getElementById('sheets-url-input').value=saved;await loadAllData();}
+  else{showDashNoData();}
+  switchPage('dashboard');
+};
+
+function switchPage(page){
+  ['dashboard','members','personal','settings'].forEach(p=>{
+    document.getElementById('page-'+p).classList.add('hidden');
+    const n=document.getElementById('nav-'+p);
+    n.classList.remove('bg-primary-container','text-on-primary-container');
+    n.classList.add('text-secondary');
+  });
+  document.getElementById('page-'+page).classList.remove('hidden');
+  const n=document.getElementById('nav-'+page);
+  n.classList.add('bg-primary-container','text-on-primary-container');
+  n.classList.remove('text-secondary');
+  if(page==='members')renderMemberList();
+  if(page==='personal')renderPersonal();
+}
+
+function extractId(url){const m=url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);return m?m[1]:null;}
+function getMonthsToTry(){const months=[],now=new Date();for(let i=0;i<12;i++){const d=new Date(now.getFullYear(),now.getMonth()-i);months.push(`${d.getFullYear()}-${d.getMonth()+1}`);}return months;}
+async function fetchSheet(id,sheetName){
+  const url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&headers=0`;
+  try{const res=await fetch(url);if(!res.ok)return null;const text=await res.text();const match=text.match(/setResponse\(([\s\S]+)\);?\s*$/);if(!match)return null;const json=JSON.parse(match[1]);return json.status==='ok'?json.table:null;}catch{return null;}
+}
+async function loadAllData(){
+  const url=localStorage.getItem('bni_sheets_url')||'';
+  const id=extractId(url);
+  if(!id){showDashNoData();return;}
+  document.getElementById('loading-icon').classList.remove('hidden');
+  allData={};availMonths=[];monthWeeks={};
+  const results=await Promise.all(getMonthsToTry().map(m=>fetchSheet(id,m).then(t=>({month:m,table:t}))));
+  results.forEach(({month,table})=>{
+    if(table){
+      const ms=parseSheet(table,month);
+      if(ms.length>0){
+        allData[month]=ms;
+        availMonths.push(month);
+        // ★ 실제 미팅 수 = P+A+L+M+S 합계의 최댓값 (완전 출석 멤버 기준)
+        const totals=ms.map(m=>m.attendance+m.absent+m.late+m.sick+m.proxy).filter(v=>v>0);
+        monthWeeks[month]=totals.length?Math.max(...totals):countDOW(...month.split('-').map(Number),CHAPTER_DOW);
+      }
+    }
+  });
+  availMonths.sort((a,b)=>{const[ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return(by*12+bm)-(ay*12+am);});
+  document.getElementById('loading-icon').classList.add('hidden');
+  if(!availMonths.length){showDashNoData();return;}
+  curDashMonth=availMonths[0];curMembersMonth=availMonths[0];curPersonalMonth=availMonths[0];
+  renderDashboard();updateSettingsInfo();
+}
+
+function parseSheet(table,monthKey){
+  const members=[],rows=table.rows||[];
+  for(let i=2;i<rows.length;i++){
+    const row=rows[i];if(!row||!row.c)continue;
+    const get=idx=>{const c=row.c[idx];if(!c||c.v==null)return 0;return typeof c.v==='number'?c.v:parseFloat(c.v)||0;};
+    const getStr=idx=>{const c=row.c[idx];if(!c||c.v==null)return'';return String(c.v);};
+    const full=getStr(0);if(!full||full.includes('#'))continue;
+    const kor=(full.match(/^[가-힣\s]+/)||[''])[0].trim();if(!kor)continue;
+    const score=get(25),trafficRaw=getStr(26);
+    members.push({name:kor,fullName:full,monthKey,attendance:get(1),absent:get(2),late:get(3),sick:get(4),proxy:get(5),rgi:get(6),rgo:get(7),rri:get(8),rro:get(9),visitor:get(10),meeting121:get(11),bizValue:get(12),training:get(13),referral:get(14),refPerWeek:get(15),visPerWeek:get(16),meetPerWeek:get(17),sAbsent:get(18),sTime:get(19),sRef:get(20),sBiz:get(21),sVisitor:get(22),sMeet:get(23),sTraining:get(24),sheetScore:score,totalScore:score,traffic:trafficRaw||scoreToTraffic(score)});
+  }
+  return members.sort((a,b)=>b.totalScore-a.totalScore);
+}
+function scoreToTraffic(s){return s>=70?'Green':s>=50?'Amber':s>=26?'Red':'Grey';}
+const TC={
+  color:{Green:'text-status-green',Amber:'text-status-amber',Red:'text-status-red',Grey:'text-status-grey'},
+  bgfull:{Green:'bg-status-green/10 text-status-green border border-status-green/20',Amber:'bg-status-amber/10 text-status-amber border border-status-amber/20',Red:'bg-status-red/10 text-status-red border border-status-red/20',Grey:'bg-status-grey/10 text-status-grey border border-status-grey/20'},
+  dot:{Green:'bg-status-green',Amber:'bg-status-amber',Red:'bg-status-red',Grey:'bg-status-grey'},
+  emoji:{Green:'🟢',Amber:'🟡',Red:'🔴',Grey:'⬛'},
+  kr:{Green:'그린',Amber:'앰버',Red:'레드',Grey:'그레이'},
+  stroke:{Green:'#22C55E',Amber:'#F59E0B',Red:'#CF202E',Grey:'#94A3B8'}
+};
+function isCurrentMonth(key){const now=new Date(),[y,m]=key.split('-').map(Number);return y===now.getFullYear()&&m===(now.getMonth()+1);}
+function fmtMonth(key){return key.split('-')[1]+'월';}
+
+function showDashNoData(){
+  document.getElementById('dash-nodata').classList.remove('hidden');
+  ['dash-chapter','dash-kpi','dash-chart','dash-quicklist'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+}
+function renderDashboard(){
+  document.getElementById('dash-nodata').classList.add('hidden');
+  ['dash-chapter','dash-kpi','dash-chart','dash-quicklist'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
+  const members=allData[curDashMonth]||[];
+  // ★ 6개월 롤링 점수로 집계
+  const cnt={Green:0,Amber:0,Red:0,Grey:0};
+  const membersWithScore=members.map(m=>{
+    const s=mScore(m.name,curDashMonth);
+    cnt[s.traffic]=(cnt[s.traffic]||0)+1;
+    return{...m,score6:s.total,traffic6:s.traffic};
+  }).sort((a,b)=>b.score6-a.score6);
+  const isCur=isCurrentMonth(curDashMonth);
+  document.getElementById('dash-meta').textContent=`${availMonths.length}개월 | ${members.length}명 | ${curDashMonth}${isCur?' (예상)':' (확정)'} | 6개월 롤링`;
+  document.getElementById('dash-months').innerHTML=availMonths.map(m=>`<button onclick="setDashMonth('${m}')" class="px-3 py-1 rounded-full font-label-caps text-label-caps whitespace-nowrap border transition-all ${m===curDashMonth?(isCurrentMonth(m)?'bg-status-amber/20 text-status-amber border-status-amber/30':'bg-primary/10 text-primary border-primary/20'):'bg-surface-container text-secondary border-transparent'}">${fmtMonth(m)}${isCurrentMonth(m)?' ★':''}</button>`).join('');
+  document.getElementById('kpi-green').textContent=cnt.Green;
+  document.getElementById('kpi-amber').textContent=cnt.Amber;
+  document.getElementById('kpi-red').textContent=cnt.Red;
+  document.getElementById('kpi-grey').textContent=cnt.Grey;
+  const max=Math.max(cnt.Green,cnt.Amber,cnt.Red,cnt.Grey,1);
+  ['green','amber','red','grey'].forEach(c=>{const key=c.charAt(0).toUpperCase()+c.slice(1);document.getElementById('bar-'+c).style.height=(cnt[key]/max*90)+'%';});
+  const pct=members.length>0?cnt.Green/members.length:0;
+  const badge=document.getElementById('health-badge');
+  badge.textContent=pct>=0.5?'우수':pct>=0.3?'보통':'주의';
+  badge.className='font-label-caps text-label-caps px-2 py-0.5 rounded '+(pct>=0.5?'bg-status-green/10 text-status-green':pct>=0.3?'bg-status-amber/10 text-status-amber':'bg-status-red/10 text-status-red');
+  document.getElementById('dash-member-list').innerHTML=membersWithScore.slice(0,5).map(m=>`
+    <div onclick="goToPersonal('${m.name}')" class="bg-surface-white border border-border-muted p-4 rounded-xl flex items-center justify-between cursor-pointer hover:bg-surface-bright transition-colors active:bg-surface-container">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full flex items-center justify-center" style="background:${TC.stroke[m.traffic6]}20">
+          <span class="font-headline-sm ${TC.color[m.traffic6]}">${m.name[0]}</span>
+        </div>
+        <div>
+          <p class="font-data-tabular text-data-tabular">${m.name}</p>
+          <p class="font-body-sm text-body-sm text-secondary">출석 ${m.attendance} | 리퍼럴 ${m.rgo} | 비지터 ${m.visitor}</p>
+        </div>
+      </div>
+      <div class="text-right">
+        <p class="text-[24px] font-bold ${TC.color[m.traffic6]}">${m.score6}</p>
+        <span class="font-label-caps text-[10px] px-2 py-0.5 rounded-full ${TC.bgfull[m.traffic6]}">${TC.kr[m.traffic6]}</span>
+      </div>
+    </div>`).join('');
+}
+function setDashMonth(m){curDashMonth=m;renderDashboard();}
+function goToPersonal(name){selectedMember=name;curPersonalMonth=curDashMonth;switchPage('personal');}
+
+function renderMemberList(){
+  if(!availMonths.length)return;
+  document.getElementById('members-months').innerHTML=availMonths.map(m=>`<button onclick="setMembersMonth('${m}')" class="px-3 py-1 rounded-full font-label-caps text-label-caps whitespace-nowrap border transition-all ${m===curMembersMonth?'bg-primary/10 text-primary border-primary/20':'bg-surface-container text-secondary border-transparent'}">${fmtMonth(m)}${isCurrentMonth(m)?' ★':''}</button>`).join('');
+  document.getElementById('members-date-label').textContent=`${curMembersMonth} ${isCurrentMonth(curMembersMonth)?'예상':'확정'} · 6개월 롤링`;
+  const search=(document.getElementById('member-search').value||'').trim();
+  // ★ 6개월 롤링 점수로 계산
+  const allM=(allData[curMembersMonth]||[]).map(m=>{
+    const s=mScore(m.name,curMembersMonth);
+    return{...m,score6:s.total,traffic6:s.traffic};
+  }).sort((a,b)=>b.score6-a.score6);
+  const members=allM.filter(m=>(curFilter==='all'||m.traffic6===curFilter)&&(!search||m.name.includes(search)));
+  const cnt={Green:0,Amber:0,Red:0,Grey:0};
+  allM.forEach(m=>cnt[m.traffic6]=(cnt[m.traffic6]||0)+1);
+  document.getElementById('members-kpi').innerHTML=['Green','Amber','Red','Grey'].map(t=>`
+    <div class="bg-surface-white p-3 rounded-xl border border-border-muted card-shadow flex flex-col gap-1 h-20">
+      <div class="flex items-center gap-1.5"><div class="traffic-dot ${TC.dot[t]}"></div><span class="font-label-caps text-label-caps text-secondary">${TC.kr[t]}</span></div>
+      <div class="flex items-baseline gap-1"><span class="font-display-lg text-display-lg ${TC.color[t]}">${cnt[t]}</span><span class="font-body-sm text-body-sm text-secondary">명</span></div>
+    </div>`).join('');
+  document.getElementById('member-table-list').innerHTML=members.length===0
+    ?'<div class="py-8 text-center font-body-sm text-body-sm text-secondary">해당 조건의 멤버가 없어요</div>'
+    :members.map(m=>`
+      <div class="grid grid-cols-12 gap-2 px-4 py-4 items-center hover:bg-surface-bright transition-colors cursor-pointer active:bg-surface-container" onclick="goToPersonal('${m.name}')">
+        <div class="col-span-4 flex flex-col"><span class="font-data-tabular text-data-tabular">${m.name}</span><span class="text-[10px] text-secondary">출석 ${m.attendance} | ${m.rgo}건</span></div>
+        <div class="col-span-3 text-center"><span class="font-bold text-[20px] ${TC.color[m.traffic6]}">${m.score6}</span></div>
+        <div class="col-span-5 flex justify-end items-center gap-2">
+          <span class="px-2 py-0.5 rounded-full font-label-caps text-[10px] ${TC.bgfull[m.traffic6]}">${TC.kr[m.traffic6]}</span>
+          <span class="material-symbols-outlined text-secondary text-sm">chevron_right</span>
+        </div>
+      </div>`).join('');
+}
+function setMembersMonth(m){curMembersMonth=m;renderMemberList();}
+function setFilter(f,btn){
+  curFilter=f;
+  document.querySelectorAll('#filter-tabs button').forEach(b=>{b.classList.remove('bg-surface-white','shadow-sm','text-on-surface');b.classList.add('text-secondary');});
+  btn.classList.add('bg-surface-white','shadow-sm','text-on-surface');btn.classList.remove('text-secondary');
+  renderMemberList();
+}
+
+function onPersonalMemberChange(){selectedMember=document.getElementById('personal-select').value;renderPersonal();}
+function setPersonalMonth(m){curPersonalMonth=m;renderPersonal();}
+
+function renderPersonal(){
+  const allNames=[...new Set(availMonths.flatMap(m=>(allData[m]||[]).map(x=>x.name)))].sort();
+  const sel=document.getElementById('personal-select');
+  sel.innerHTML='<option value="">멤버를 선택하세요</option>'+allNames.map(n=>`<option value="${n}"${n===selectedMember?' selected':''}>${n}</option>`).join('');
+  if(selectedMember)sel.value=selectedMember;
+
+  // ★ 실제 달 + 미래 3개월 탭
+  const pMonths=getPersonalMonths();
+  document.getElementById('personal-months-tabs').innerHTML=pMonths.map(m=>{
+    const isA=m===curPersonalMonth;
+    const lbl=monthLabel(m);
+    return`<button class="flex-1 py-1.5 rounded-md font-label-caps text-label-caps transition-all text-[10px] ${isA?'bg-surface-white shadow-sm text-on-surface':'text-secondary'}" onclick="setPersonalMonth('${m}')">${lbl}</button>`;
+  }).join('');
+
+  const secs=['personal-summary','personal-metrics','personal-scores','personal-feedback','personal-actions'];
+  if(!selectedMember){secs.forEach(id=>document.getElementById(id).classList.add('hidden'));return;}
+
+  // ★ 6개월 롤링 점수 계산
+  const sc=mScore(selectedMember,curPersonalMonth);
+  // 이 멤버의 최신 실제 데이터 (화면 표시용)
+  const latestKey=availMonths.find(m=>allData[m]&&allData[m].find(x=>x.name===selectedMember));
+  const latestData=latestKey?(allData[latestKey]||[]).find(x=>x.name===selectedMember):null;
+  if(!latestData){secs.forEach(id=>document.getElementById(id).classList.add('hidden'));return;}
+  secs.forEach(id=>document.getElementById(id).classList.remove('hidden'));
+
+  // Summary
+  document.getElementById('p-name').textContent=selectedMember+' 대표';
+  const circ=document.getElementById('p-circle');
+  circ.style.strokeDashoffset=176-(176*sc.total/100);circ.style.stroke=TC.stroke[sc.traffic];
+  document.getElementById('p-score-circle').textContent=sc.total+'점';
+  document.getElementById('p-score-circle').className=`absolute font-data-tabular text-[11px] ${TC.color[sc.traffic]}`;
+  document.getElementById('p-badge').className=`inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full font-label-caps text-[10px] ${TC.bgfull[sc.traffic]}`;
+  document.getElementById('p-badge-dot').className=`w-1.5 h-1.5 rounded-full ${TC.dot[sc.traffic]}`;
+  document.getElementById('p-badge-text').textContent=TC.kr[sc.traffic]+' 등급'+(sc.extra>0?' (예상)':'');
+
+  // Metrics (최신 달 실제 데이터)
+  const attendOk=latestData.absent===0&&latestData.late===0;
+  document.getElementById('m-attend').innerHTML=`${latestData.attendance}<span class="text-body-sm font-normal text-secondary">회</span>/${latestData.absent}<span class="text-body-sm font-normal text-secondary">결</span>`;
+  document.getElementById('m-attend-lbl').textContent=attendOk?'완벽':`결${latestData.absent} 지${latestData.late}`;
+  document.getElementById('m-attend-lbl').className='font-body-sm font-semibold '+(attendOk?'text-status-green':'text-status-red');
+  document.getElementById('m-attend-icon').textContent=attendOk?'check_circle':'warning';
+  document.getElementById('m-attend-icon').className='material-symbols-outlined text-sm '+(attendOk?'text-status-green':'text-status-red');
+  const setMCard=(id,html,ok,badLabel)=>{
+    document.getElementById('m-'+id).innerHTML=html;
+    document.getElementById('m-'+id+'-lbl').textContent=ok?'달성':badLabel;
+    document.getElementById('m-'+id+'-lbl').className='font-body-sm font-semibold '+(ok?'text-status-green':'text-primary');
+    document.getElementById('m-'+id+'-icon').textContent=ok?'check_circle':'trending_up';
+    document.getElementById('m-'+id+'-icon').className='material-symbols-outlined text-sm '+(ok?'text-status-green':'text-primary');
+  };
+  setMCard('ref',`${latestData.rgo}<span class="text-body-sm font-normal text-secondary">건</span>`,latestData.rgo>=2,'리퍼럴 부족');
+  setMCard('visitor',`${latestData.visitor}<span class="text-body-sm font-normal text-secondary">명</span>`,latestData.visitor>=1,'비지터 필요');
+  setMCard('121',`${latestData.meeting121}<span class="text-body-sm font-normal text-secondary">건</span>`,latestData.meeting121>=2,'원투원 부족');
+
+  // Score breakdown (★ 6개월 롤링 기준)
+  const bd=sc.bd;
+  const items=[
+    {l:'출석/결석 (15점)',s:bd.abs,x:15},
+    {l:'정시도착 (10점)',s:bd.time,x:10},
+    {l:'리퍼럴 (20점)',s:bd.refPt,x:20},
+    {l:'감사장 기여금액 (15점)',s:bd.bizPt,x:15},
+    {l:'비지터 (20점)',s:bd.visPt,x:20},
+    {l:'원투원 (10점)',s:bd.oPt,x:10},
+    {l:'교육참가 (10점)',s:bd.trPt,x:10}
+  ];
+  document.getElementById('score-breakdown').innerHTML=items.map(item=>{
+    const pct=Math.round(item.s/item.x*100);
+    const cls=item.s>=item.x?'text-status-green':item.s>0?'text-status-amber':'text-status-red';
+    const barCls=item.s>=item.x?'bg-status-green':item.s>0?'bg-status-amber':'bg-status-red';
+    return `<div class="py-2.5"><div class="flex justify-between items-center mb-1"><span class="font-body-sm text-body-sm text-secondary">${item.l}</span><span class="font-data-tabular text-data-tabular ${cls}">${item.s}/${item.x}</span></div><div class="w-full bg-surface-container rounded-full h-1.5"><div class="h-1.5 rounded-full ${barCls} transition-all duration-700" style="width:${pct}%"></div></div></div>`;
+  }).join('');
+  document.getElementById('feedback-cards').innerHTML=buildFeedbackCards(latestData,sc);
+}
+
+/* ★★★ 출결 감점 회복 로직 수정 ★★★
+   BNI Rule: 결석/지각 발생월 기준 +6개월 후부터 감점 사라짐
+   예) 2월 결석 → 2+6=8월부터 회복 (3~8월은 감점 지속)
+   "출결 잘 하면 곧 +5점" 피드백 완전 제거 */
+function calcAttendanceRecovery(memberName){
+  const badMonths=[];
+  availMonths.forEach(key=>{
+    const m=(allData[key]||[]).find(x=>x.name===memberName);
+    if(m&&(m.absent>0||m.late>0))badMonths.push(key);
+  });
+  if(!badMonths.length)return null;
+  badMonths.sort((a,b)=>{const[ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return(ay*12+am)-(by*12+bm);});
+  const latest=badMonths[badMonths.length-1];
+  const[ly,lm]=latest.split('-').map(Number);
+  const recD=new Date(ly,lm-1+6,1);
+  const now=new Date(),nowD=new Date(now.getFullYear(),now.getMonth(),1);
+  if(recD<=nowD)return{recovered:true};
+  return{recovered:false,label:`${recD.getFullYear()}년 ${recD.getMonth()+1}월`,latestBad:latest};
+}
+
+function buildFeedbackCards(m,sc){
+  const cards=[];
+  if(sc.bd.abs<15){
+    const rec=calcAttendanceRecovery(m.name);
+    let msg='';
+    if(rec&&!rec.recovered){
+      const[,badM]=rec.latestBad.split('-');
+      msg=`${badM}월 결석/지각 이력으로 인해 <strong>${rec.label}부터</strong> 출결 점수가 회복됩니다.<br>그 전까지 결석·지각 없이 유지해 주세요. (BNI 6개월 적용 기준)`;
+    }else{
+      msg='출결 감점이 있어요. 앞으로 결석·지각 없이 유지해 주세요.';
+    }
+    cards.push(`<div class="bg-status-red/5 border border-status-red/20 rounded-xl p-4"><div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-status-red">event_busy</span><p class="font-headline-sm text-headline-sm">출결 감점 안내</p></div><p class="font-body-md text-body-md text-on-secondary-container leading-relaxed">${msg}</p></div>`);
+  }else{
+    cards.push(`<div class="bg-status-green/5 border border-status-green/20 rounded-xl p-4"><div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-status-green">how_to_reg</span><p class="font-headline-sm text-headline-sm">출결 만점!</p></div><p class="font-body-md text-body-md text-on-secondary-container">완벽한 출결을 유지하고 계세요! 👏</p></div>`);
+  }
+  // 6개월 평균 페이스
+  const W=sc.agg.weeks+(sc.extra||0);
+  if(W>0){
+    const rW=(sc.agg.ref/W).toFixed(2),vW=(sc.agg.visitor/W).toFixed(2),oW=(sc.agg.meet/W).toFixed(2);
+    cards.push(`<div class="bg-status-green/5 border border-status-green/20 rounded-xl p-4"><div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-status-green">emoji_objects</span><p class="font-headline-sm text-headline-sm">6개월 평균 페이스</p></div><p class="font-body-md text-body-md text-on-secondary-container">주당 — 리퍼럴 ${rW}건 / 비지터 ${vW}명 / 원투원 ${oW}건</p></div>`);
+  }
+  const lacking=[];
+  if(sc.bd.refPt<20)lacking.push('리퍼럴');
+  if(sc.bd.visPt<20)lacking.push('비지터');
+  if(sc.bd.oPt<10)lacking.push('원투원');
+  if(sc.bd.trPt<10)lacking.push('교육');
+  if(!lacking.length){
+    cards.push(`<div class="bg-primary/5 border border-primary/20 rounded-xl p-4"><div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-primary">military_tech</span><p class="font-headline-sm text-headline-sm">모든 목표 달성!</p></div><p class="font-body-md text-body-md text-on-secondary-container">현재 페이스를 유지하면 그린 등급을 안정적으로 유지할 수 있어요 💪</p></div>`);
+  }else{
+    cards.push(`<div class="bg-primary/5 border border-primary/20 rounded-xl p-4"><div class="flex items-center gap-2 mb-2"><span class="material-symbols-outlined text-primary">flag</span><p class="font-headline-sm text-headline-sm">개선 포인트</p></div><p class="font-body-md text-body-md text-on-secondary-container"><strong>${lacking.join(', ')}</strong> 활동을 늘리면 점수를 올릴 수 있어요!</p></div>`);
+  }
+  return cards.join('');
+}
+
+function copyFeedback(){
+  if(!selectedMember)return;
+  const sc=mScore(selectedMember,curPersonalMonth);
+  const latestKey=availMonths.find(m=>allData[m]&&allData[m].find(x=>x.name===selectedMember));
+  if(!latestKey)return;
+  const m=(allData[latestKey]||[]).find(x=>x.name===selectedMember);
+  if(!m)return;
+  let attendLine='';
+  if(sc.bd.abs<15){
+    const rec=calcAttendanceRecovery(selectedMember);
+    if(rec&&!rec.recovered){
+      const[,badM]=rec.latestBad.split('-');
+      attendLine=`\n⚠️ 출결 안내: ${badM}월 이력으로 ${rec.label}까지 감점 유지 (BNI 6개월 기준)`;
+    }
+  }
+  let action='';
+  if(sc.traffic==='Green')action='이번 달도 훌륭한 활동이세요! 🎉 이 페이스를 유지해주세요!';
+  else if(sc.traffic==='Amber'){const l=[];if(sc.bd.refPt<20)l.push('리퍼럴');if(sc.bd.visPt<20)l.push('비지터');if(sc.bd.oPt<10)l.push('원투원');action=l.length?`${l.join(', ')} 활동을 늘리면 그린까지 도달할 수 있어요! 💪`:'좋은 페이스를 유지하고 계세요! 👍';}
+  else if(sc.traffic==='Red')action='함께 더 활발하게 활동해봐요! 🙏 원투원과 비지터 초청에 집중해보세요.';
+  else action='이번 달은 활동이 많이 부족했네요. 😊 원투원 1건부터 시작해볼까요?';
+  const W=sc.agg.weeks+(sc.extra||0);
+  const rW=W>0?(sc.agg.ref/W).toFixed(2):'0.00';
+  const vW=W>0?(sc.agg.visitor/W).toFixed(2):'0.00';
+  const oW=W>0?(sc.agg.meet/W).toFixed(2):'0.00';
+  const text=[
+    `안녕하세요 ${selectedMember} 대표님 🙏`,``,
+    `BNI 파이오니어 챕터 트래픽 라이트 피드백`,
+    `(${monthLabel(curPersonalMonth)} · 6개월 롤링 기준)`,``,
+    `현재 ${TC.emoji[sc.traffic]} ${TC.kr[sc.traffic]} ${sc.total}점 / 100점`,``,
+    `📈 6개월 평균 페이스`,
+    `• 리퍼럴 주당 ${rW}건 / 비지터 ${vW}명 / 원투원 ${oW}건`,``,
+    `📊 점수 상세`,
+    `• 출결 ${sc.bd.abs}/15 | 정시 ${sc.bd.time}/10 | 리퍼럴 ${sc.bd.refPt}/20`,
+    `• 감사장 ${sc.bd.bizPt}/15 | 비지터 ${sc.bd.visPt}/20 | 원투원 ${sc.bd.oPt}/10 | 교육 ${sc.bd.trPt}/10`,
+    attendLine,``,action,``,
+    `함께 성장해요! 💪`,
+    `- BNI 파이오니어 앰버서더 송승훈 드림`
+  ].join('\n');
+  navigator.clipboard.writeText(text).then(()=>showToast('📋 카톡 피드백 복사 완료!')).catch(()=>{const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);showToast('📋 카톡 피드백 복사 완료!');});
+}
+
+function drawLotto(){
+  const pool=Array.from({length:45},(_,i)=>i+1),nums=[];
+  for(let i=0;i<6;i++){const idx=Math.floor(Math.random()*pool.length);nums.push(pool.splice(idx,1)[0]);}
+  nums.sort((a,b)=>a-b);
+  function bc(n){return n<=10?'#e8a900':n<=20?'#2563eb':n<=30?'#dc2626':n<=40?'#6b7280':'#16a34a';}
+  const el=document.getElementById('lotto-balls');
+  el.innerHTML=nums.map((n,i)=>`<div id="lball${i}" style="width:40px;height:40px;border-radius:50%;background:${bc(n)};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;opacity:0;transform:scale(0.5);transition:opacity 0.3s,transform 0.3s;">${n}</div>`).join('');
+  nums.forEach((_,i)=>setTimeout(()=>{const b=document.getElementById('lball'+i);if(b){b.style.opacity='1';b.style.transform='scale(1)';}},i*120));
+}
+
+async function saveAndConnect(){
+  const url=document.getElementById('sheets-url-input').value.trim();
+  if(!url){alert('URL을 입력해주세요');return;}
+  const id=extractId(url);
+  if(!id){alert('올바른 Google Sheets URL이 아니에요');return;}
+  localStorage.setItem('bni_sheets_url',url);
+  document.getElementById('sheets-status-text').textContent='연결 중...';
+  await loadAllData();
+}
+function updateSettingsInfo(){
+  const url=localStorage.getItem('bni_sheets_url')||'';
+  if(extractId(url)){
+    document.getElementById('sheets-status-text').textContent=`✅ 연결됨 | ${availMonths.length}개월 로드 완료`;
+    document.getElementById('sheets-status-text').className='font-body-sm text-body-sm mt-1.5 text-status-green';
+    document.getElementById('settings-data-info').innerHTML=availMonths.map(m=>`<div class="flex justify-between items-center py-1.5 border-b border-border-muted last:border-0"><span class="font-body-sm text-body-sm">${m}${isCurrentMonth(m)?' (예상)':' (확정)'}</span><span class="font-label-caps text-label-caps text-secondary">${(allData[m]||[]).length}명</span></div>`).join('');
+  }
+}
+function showToast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toast-msg').textContent=msg;
+  t.classList.remove('opacity-0');t.classList.add('opacity-100');
+  setTimeout(()=>{t.classList.add('opacity-0');t.classList.remove('opacity-100');},2500);
+}
+</script>
+</body>
+</html>
