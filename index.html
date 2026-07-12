@@ -938,6 +938,52 @@ function renderFeedback(agg, score, extra, droppingKeys) {
   var rPW = agg.totalWeeks > 0 ? (agg.RGI + agg.RGO) / agg.totalWeeks : 0;
   var vPW = agg.totalWeeks > 0 ? agg.V / agg.totalWeeks : 0;
   var oPW = agg.totalWeeks > 0 ? agg.M121 / agg.totalWeeks : 0;
+  var mns = ['','1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+  // ── 월별 출결 회복 일정 계산 ──────────────────────────────────────
+  // 각 달의 결석/지각은 그 달 +6개월 후에 6개월 윈도우에서 빠져나옴
+  var recoveries = [];
+  for (var ri = 0; ri < agg.months.length; ri++) {
+    var mk = agg.months[ri];
+    var md = MONTHLY[mk];
+    var mb = null;
+    for (var mj = 0; mj < md.members.length; mj++) {
+      if (md.members[mj].name === selName) { mb = md.members[mj]; break; }
+    }
+    if (!mb || (mb.A === 0 && mb.L === 0)) continue;
+    var pp = parseKey(mk);
+    var ry = pp.year, rm = pp.month + 6;
+    if (rm > 12) { ry++; rm -= 12; }
+    var recKey = toKey(ry, rm);
+    var now = new Date();
+    var nowKey = toKey(now.getFullYear(), now.getMonth() + 1);
+    var status = recKey <= nowKey ? '✅ 이미 소멸' : '예정';
+    var desc = [];
+    if (mb.A > 0) desc.push('결석 ' + mb.A + '회(-' + (mb.A * 5) + '점)');
+    if (mb.L > 0) desc.push('지각 ' + mb.L + '회');
+    recoveries.push({ fromKey:mk, fromLabel:mns[pp.month]+'('+mk+')', recKey:recKey, recLabel:ry+'년 '+mns[rm], desc:desc.join(' / '), status:status });
+  }
+  recoveries.sort(function(a,b){ return a.recKey.localeCompare(b.recKey); });
+
+  // 회복 일정 HTML
+  var recHtml = '';
+  if (recoveries.length > 0) {
+    var recRows = '';
+    for (var ri = 0; ri < recoveries.length; ri++) {
+      var rv = recoveries[ri];
+      var isGone = rv.status === '✅ 이미 소멸';
+      recRows += '<div class="fb-row" style="opacity:' + (isGone ? '0.5' : '1') + '">' +
+        '<span class="fb-ico">' + (isGone ? '✅' : '📅') + '</span>' +
+        '<span class="fb-txt">' +
+        '<b style="color:var(--r)">' + rv.fromLabel + '</b> ' + rv.desc +
+        ' → <b style="color:' + (isGone ? 'var(--g)' : 'var(--a)') + '">' + rv.recLabel + ' 소멸</b>' +
+        ' <span style="font-size:11px;color:var(--mut)">(' + rv.status + ')</span>' +
+        '</span></div>';
+    }
+    recHtml = '<div class="fb-box fb-amber" style="margin-bottom:12px">' +
+      '<div class="fb-title fta">📅 출결 페널티 소멸 일정 (달마다 +6개월)</div>' +
+      recRows + '</div>';
+  }
 
   function getChoices(target) {
     var gap = Math.max(0, target - score.total);
@@ -997,7 +1043,7 @@ function renderFeedback(agg, score, extra, droppingKeys) {
   var dropLine = droppingKeys.length > 0 ?
     '<div class="fb-row"><span class="fb-ico">⚠️<\/span><span class="fb-txt">빠지는 달(' + droppingKeys.map(keyLabel).join(', ') + ') 영향 반영<\/span><\/div>' : '';
 
-  var html =
+  var html = recHtml +
     '<div class="fb-box fb-' + fbCls + '" style="margin-bottom:12px">' +
     '<div class="fb-title ' + ftCls + '">💡 현재 활동 페이스<\/div>' +
     '<div class="fb-row"><span class="fb-ico">📈<\/span><span class="fb-txt">주당 평균 — 리퍼럴 ' + rPW.toFixed(2) + '건 / 비지터 ' + vPW.toFixed(2) + '명 / 1:1 ' + oPW.toFixed(2) + '건<\/span><\/div>' +
