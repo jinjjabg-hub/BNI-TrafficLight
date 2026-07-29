@@ -173,6 +173,7 @@ tbody td { padding: 8px 9px; font-size: 12px; white-space: nowrap; }
   </div>
 
   <div class="misswarn" id="misswarn" style="display:none"></div>
+  <div id="sponotice" style="display:none;background:var(--ab);border:1px solid var(--ad);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--a);line-height:1.6"></div>
 
   <div class="loadbox" id="loadbox">
     <div class="loadbox-icon">⏳</div>
@@ -269,6 +270,12 @@ var MONTHLY = {}, MONTHS = [], MEMBERS = [];
 var curFilter = 'all', selName = null, selMode = 'current';
 var CACHE_KEY = 'tlg_cache_v1';
 
+// ★ 스폰서(5점) 자동 전환 스위치
+//   구글시트에 스폰서 열이 아직 없으면 → SPO_AVAILABLE=false → 95점 만점으로 계산
+//   나중에 시트에 열만 추가하면 → 자동으로 true → 100점 만점으로 전환 (코드 수정 불필요)
+var SPO_AVAILABLE = false;
+function maxScore(){ return SPO_AVAILABLE ? 100 : 95; }
+
 // ── 유틸 ──────────────────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
 function toast(msg, type){
@@ -292,7 +299,13 @@ function rollingStart(endKey){
   var y=p.year, m=p.month-5; if(m<=0){m+=12;y--;}
   return toKey(y,m);
 }
-function getLight(s){ return s>=70?'Green':s>=50?'Amber':s>=30?'Red':'Grey'; }
+// 신호등은 "만점 대비 비율"로 판정 — 스폰서 미집계(95점 만점)여도 기준선이 자동 보정됨
+// (100점 만점: 70/50/30 · 95점 만점: 66.5/47.5/28.5)
+function lightCut(ratio){ return Math.round(maxScore()*ratio*10)/10; }
+function getLight(s){
+  var mx=maxScore();
+  return s>=mx*0.7?'Green' : s>=mx*0.5?'Amber' : s>=mx*0.3?'Red' : 'Grey';
+}
 function lkor(l){ return {Green:'🟢 그린',Amber:'🟡 앰버',Red:'🔴 레드',Grey:'⬛ 그레이'}[l]; }
 function lcolor(l){ return {Green:'var(--g)',Amber:'var(--a)',Red:'var(--r)',Grey:'var(--gr)'}[l]; }
 
@@ -345,12 +358,14 @@ function looksLikeFullNameRow(raw){
   return /^[가-힣]{2,5}[,\s]+[A-Za-z]/.test(raw);
 }
 function positionalScan(rows){
-  var members = [];
+  var members = [], spoIdx = STD_ORDER.indexOf('SPO'), hasSpo = false;
   for(var r=0; r<rows.length; r++){
     var row = rows[r];
     var raw = String(row[0]||'').trim();
     if(!looksLikeFullNameRow(raw)) continue;
     if(row.length < 8) continue; // 열이 너무 적으면 이 표 형식이 아님
+    // 스폰서 열이 물리적으로 존재하는지 (열 개수로 판단)
+    if(spoIdx>=0 && row.length > spoIdx) hasSpo = true;
     var kor = raw.split(/\s+/)[0].trim();
     var get = function(field){
       var i = STD_ORDER.indexOf(field);
@@ -363,11 +378,11 @@ function positionalScan(rows){
       N:get('N'), O:get('O'), SPO:get('SPO')
     });
   }
-  return members;
+  return {members:members, hasSpo:hasSpo};
 }
 function parseMonthRows(rows, y, m){
   if(!rows || rows.length < 2) return null;
-  var members = [], diagErrs = [];
+  var members = [], diagErrs = [], hasSpo = false;
 
   // ① 우선 헤더 텍스트를 읽어서 정확히 매칭 시도 (열 순서가 바뀌어도 안전)
   try {
@@ -394,6 +409,7 @@ function parseMonthRows(rows, y, m){
       SPO: fi(['스폰서','Sponsor','신규회원','후원'])
     };
     if(idx.name<0 || idx.P<0) throw new Error('컬럼 인식 실패');
+    hasSpo = (idx.SPO >= 0);   // ★ 스폰서 열이 시트에 실제로 있는지
     for(var r2=hi+1; r2<rows.length; r2++){
       var row = rows[r2];
       var raw = String(row[idx.name]||'').trim();
@@ -413,7 +429,8 @@ function parseMonthRows(rows, y, m){
   } catch(e1){
     diagErrs.push('헤더매칭: '+e1.message);
     // ② 헤더 매칭 실패 → 위치 기반 강제 스캔으로 대체 (헤더 글자·공백과 무관하게 작동)
-    members = positionalScan(rows);
+    var ps = positionalScan(rows);
+    members = ps.members; hasSpo = ps.hasSpo;
     if(!members.length){
       diagErrs.push('위치스캔: 이름처럼 생긴 행을 찾지 못함');
       throw new Error(diagErrs.join(' / '));
@@ -429,7 +446,7 @@ function parseMonthRows(rows, y, m){
     actualWeeks = parseInt(Object.keys(freq).sort(function(a,b){return freq[b]-freq[a];})[0]);
   }
   return {
-    year:y, month:m, members:members,
+    year:y, month:m, members:members, hasSpo:hasSpo,
     actualWeeks:actualWeeks, fullWeeks:fw,
     remainWeeks:Math.max(0, fw-actualWeeks)
   };
@@ -558,6 +575,9 @@ function applyData(cache, fresh){
   MONTHS = Object.keys(MONTHLY).sort();
   var last = MONTHS[MONTHS.length-1];
   MEMBERS = MONTHLY[last].members.map(function(m){return m.name;});
+  // ★ 한 달이라도 스폰서 열이 있으면 스폰서 채점 활성화 (시트에 열 추가하면 자동 전환)
+  SPO_AVAILABLE = MONTHS.some(function(k){ return !!MONTHLY[k].hasSpo; });
+  renderSpoNotice();
   $('loadbox').style.display = 'none';
   $('dbar').style.display = 'block';
   $('pview').style.display = 'block';
@@ -566,6 +586,16 @@ function applyData(cache, fresh){
   renderMissing(cache.missing);
   updateDbar(); renderStats(); renderTable(); renderChips();
   if(selName){ buildPbtns(); updatePersonal(); }
+}
+function renderSpoNotice(){
+  var el = $('sponotice');
+  if(!el) return;
+  if(SPO_AVAILABLE){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.innerHTML = '⚠️ 구글시트에 <b>스폰서</b> 열이 아직 없어서 스폰서 5점은 <b>미집계</b>예요. '+
+    '현재 <b>95점 만점</b>으로 계산되고, 신호등 기준도 자동 보정됐어요 '+
+    '(🟢 '+lightCut(0.7)+'점 · 🟡 '+lightCut(0.5)+'점 · 🔴 '+lightCut(0.3)+'점). '+
+    '시트에 「스폰서」 열만 추가하면 앱이 자동으로 100점 만점으로 전환돼요.';
 }
 function renderMissing(missing){
   var el = $('misswarn');
@@ -680,12 +710,13 @@ function calcScore(agg, extra, monthKey){
   var fee = membershipFee(monthKey || agg.endKey || '0000-00');
   var mult = agg.N/fee;
   var tyPt = mult>=30?5 : mult>=15?4 : mult>=5?3 : mult>=2?2 : mult>0?1 : 0;
-  var spoPt = agg.SPO>=1 ? 5 : 0;
+  // 스폰서: 시트에 열이 없으면 채점 자체에서 제외 (0점 감점이 아니라 "미집계")
+  var spoPt = SPO_AVAILABLE ? (agg.SPO>=1 ? 5 : 0) : 0;
   return {
     total: attPt+refPt+visPt+oPt+ceuPt+tyPt+spoPt,
     bd: {att:attPt, ref:refPt, vis:visPt, otwone:oPt, ceu:ceuPt, tyfcb:tyPt, spo:spoPt},
     rates: {attRate:attRate, rW:rW, oW:oW, cW:cW, tyMult:mult, fee:fee},
-    MT: MT
+    MT: MT, max: maxScore()
   };
 }
 
@@ -749,7 +780,9 @@ function renderTable(){
       cell(agg.M121+'건', s.bd.otwone, 20)+
       cell(agg.O, s.bd.ceu, 10)+
       cell(s.rates.tyMult.toFixed(1)+'배', s.bd.tyfcb, 5)+
-      cell(agg.SPO+'명', s.bd.spo, 5);
+      (SPO_AVAILABLE
+        ? cell(agg.SPO+'명', s.bd.spo, 5)
+        : '<td style="text-align:center;color:var(--mut);font-size:11px">미집계</td>');
     tr.addEventListener('click', function(){ goPersonal(name); });
     tb.appendChild(tr);
   });
@@ -852,16 +885,17 @@ function updatePersonal(){
 
   var dropHtml = m.droppingKeys.length>0 ?
     '<div style="font-size:11px;color:var(--a);margin-top:3px">⚠️ 빠지는 달: '+m.droppingKeys.map(keyLabel).join(', ')+'</div>' : '';
-  var gapHtml = score.total>=70 ?
+  var GREEN = lightCut(0.7);
+  var gapHtml = score.total>=GREEN ?
     '<div style="font-size:12px;margin-top:3px;text-align:right;color:var(--g)">✅ 그린 달성!</div>' :
-    '<div style="font-size:12px;margin-top:3px;text-align:right;color:var(--a)">🎯 그린까지 '+(70-score.total)+'점</div>';
+    '<div style="font-size:12px;margin-top:3px;text-align:right;color:var(--a)">🎯 그린까지 '+(Math.ceil(GREEN-score.total))+'점</div>';
 
   $('pcard').innerHTML =
     '<div class="pcard-top"><div><div class="pname">'+selName+'</div>'+
     '<div style="margin-top:6px"><span class="badge '+light+'">'+lkor(light)+'</span></div>'+
     '<div style="font-size:11px;color:var(--mut);margin-top:5px">'+m.rangeLabel+'</div>'+dropHtml+'</div>'+
     '<div><div class="pbig" style="color:'+color+'">'+score.total+'</div>'+
-    '<div class="pbig-sub">/ 100점</div>'+gapHtml+'</div></div>';
+    '<div class="pbig-sub">/ '+maxScore()+'점'+(SPO_AVAILABLE?'':' (스폰서 미집계)')+'</div>'+gapHtml+'</div></div>';
 
   var naScore=calcScore(agg,0,m.targetKey).total, naLight=getLight(naScore);
   $('nacard').innerHTML =
@@ -919,8 +953,8 @@ function computeChoices(agg, score, extra, target){
     if(needW>0) ch.push({ico:'💰',lbl:'감사장',txt:Math.round(needW).toLocaleString('ko-KR')+'원 더',
       sub:'현재 '+mult.toFixed(1)+'배 → '+nm+'배',pts:1});
   }
-  // 스폰서 5
-  if(score.bd.spo<5) ch.push({ico:'🌱',lbl:'스폰서',txt:'신규회원 1명 후원 → 5점',sub:'6개월 내 1명이면 만점',pts:5});
+  // 스폰서 5 (시트에 열이 있을 때만 제안)
+  if(SPO_AVAILABLE && score.bd.spo<5) ch.push({ico:'🌱',lbl:'스폰서',txt:'신규회원 1명 후원 → 5점',sub:'6개월 내 1명이면 만점',pts:5});
   // 출석 10 (예상 모드에서만 상승 여지)
   if(score.bd.att<10 && extra>0){
     var fr=(MT-agg.A)/MT, fp = fr>=0.95?10 : fr>=0.88?5 : 0;
@@ -985,10 +1019,11 @@ function renderFeedback(agg, score, extra, droppingKeys, targetMonthWeeks, targe
     return '<div class="fb-box fb-'+cls+'"><div class="fb-title '+ftc+'">'+emoji+' '+title+' — '+r.gap+'점 필요</div>'+
       '<div class="fb-cnt">아래 중 <b>'+r.min+'개 이상</b> 달성하면 '+title.replace(/\(.*\)/,'').trim()+' 달성!</div>'+rows+'</div>';
   }
-  if(light==='Grey'){ html+=makeFb('red','ftr','🔴','레드(30점)',30)+makeFb('amber','fta','🟡','앰버(50점)',50)+makeFb('green','ftg2','🟢','그린(70점)',70); }
-  else if(light==='Red'){ html+=makeFb('amber','fta','🟡','앰버(50점)',50)+makeFb('green','ftg2','🟢','그린(70점)',70); }
-  else if(light==='Amber'){ html+=makeFb('green','ftg2','🟢','그린(70점)',70); }
-  else { html+=makeFb('green','ftg2','🏆','그린 유지!',71); }
+  var CUT_R=lightCut(0.3), CUT_A=lightCut(0.5), CUT_G=lightCut(0.7);
+  if(light==='Grey'){ html+=makeFb('red','ftr','🔴','레드('+CUT_R+'점)',CUT_R)+makeFb('amber','fta','🟡','앰버('+CUT_A+'점)',CUT_A)+makeFb('green','ftg2','🟢','그린('+CUT_G+'점)',CUT_G); }
+  else if(light==='Red'){ html+=makeFb('amber','fta','🟡','앰버('+CUT_A+'점)',CUT_A)+makeFb('green','ftg2','🟢','그린('+CUT_G+'점)',CUT_G); }
+  else if(light==='Amber'){ html+=makeFb('green','ftg2','🟢','그린('+CUT_G+'점)',CUT_G); }
+  else { html+=makeFb('green','ftg2','🏆','그린 유지!',score.total+1); }
   $('fbwrap').innerHTML=html;
 }
 function renderActTable(agg, score, extra){
@@ -1009,8 +1044,11 @@ function renderActTable(agg, score, extra){
      nd:need(agg.O,0.5*MT), u:'', std:'만점 '+Math.ceil(0.5*MT)+' = 미팅 '+MT+'회 × 주당 0.5'},
     {n:'감사장 (TYFCB)', cur:won(agg.N)+' · '+score.rates.tyMult.toFixed(1)+'배', pts:score.bd.tyfcb, max:5,
      nd:null, std:'연회비 '+won(fee)+' 기준 · 만점 '+won(fee*30)},
-    {n:'스폰서', cur:agg.SPO+'명', pts:score.bd.spo, max:5,
-     nd:Math.max(0,1-agg.SPO), u:'명', std:'6개월 내 신규회원 1명 후원'}
+    SPO_AVAILABLE
+      ? {n:'스폰서', cur:agg.SPO+'명', pts:score.bd.spo, max:5,
+         nd:Math.max(0,1-agg.SPO), u:'명', std:'6개월 내 신규회원 1명 후원'}
+      : {n:'스폰서', cur:'<span style="color:var(--mut)">미집계</span>', pts:'—', max:'—',
+         nd:null, std:'구글시트에 「스폰서」 열 추가 시 자동 반영 (현재 95점 만점)'}
   ];
   $('actnote').innerHTML = '<div style="font-size:11.5px;color:var(--mut);margin-bottom:8px;line-height:1.6">'+
     '🌐 <b>글로벌(BNI Insights) 기준</b>이에요. 분모는 챕터 주수가 아니라 <b>본인의 미팅 기록 '+MT+'회</b>'+
@@ -1022,7 +1060,8 @@ function renderActTable(agg, score, extra){
     var ndTxt = r.nd===null ? '<span class="cmut">—</span>'
       : r.nd===0 ? '<span class="cok">✓ 만점</span>'
       : '<span class="cbad">+'+r.nd+(r.u||'')+'</span>';
-    var col = r.pts>=r.max?'var(--g)':r.pts>0?'var(--a)':'var(--r)';
+    var col = (typeof r.pts!=='number') ? 'var(--mut)'
+      : r.pts>=r.max?'var(--g)':r.pts>0?'var(--a)':'var(--r)';
     html+='<tr><td class="albl">'+r.n+'</td><td class="ccur">'+r.cur+'</td>'+
       '<td><span style="font-weight:800;color:'+col+'">'+r.pts+'</span>'+
       '<span style="color:var(--mut);font-size:10.5px">/'+r.max+'점</span></td>'+
@@ -1041,9 +1080,11 @@ function buildFeedbackText(name, mode){
   lines.push('안녕하세요 '+korName+' 대표님');
   lines.push('트래픽 라이트 피드백 · 글로벌 기준 ('+m.modeLbl+')');
   lines.push('');
-  lines.push(lkor(light)+' '+score.total+'점 / 100점');
+  lines.push(lkor(light)+' '+score.total+'점 / '+maxScore()+'점');
   lines.push('리퍼럴 '+score.bd.ref+'/25 · 비지터 '+score.bd.vis+'/25 · 1:1 '+score.bd.otwone+'/20');
-  lines.push('출석 '+score.bd.att+'/10 · CEU '+score.bd.ceu+'/10 · 감사장 '+score.bd.tyfcb+'/5 · 스폰서 '+score.bd.spo+'/5');
+  lines.push('출석 '+score.bd.att+'/10 · CEU '+score.bd.ceu+'/10 · 감사장 '+score.bd.tyfcb+'/5 · 스폰서 '+
+    (SPO_AVAILABLE ? score.bd.spo+'/5' : '미집계'));
+  if(!SPO_AVAILABLE) lines.push('※ 스폰서 항목은 아직 집계 전이라 95점 만점 기준이에요');
   if(m.targetMonthWeeks){
     lines.push('📅 '+m.targetMonthName+'에는 수요일이 총 '+m.targetMonthWeeks+'회 있어요 (출결 문제없다는 전제로 계산)');
   }
@@ -1072,7 +1113,8 @@ function buildFeedbackText(name, mode){
     r.choices.forEach(function(c){ lines.push(c.ico+' '+c.lbl+' '+c.txt+(c.sub?' ('+c.sub+')':'')); });
     lines.push('');
   }
-  if(score.total>=70){
+  var K_R=lightCut(0.3), K_A=lightCut(0.5), K_G=lightCut(0.7);
+  if(score.total>=K_G){
     lines.push('그린 달성! 이 페이스 유지해요');
     lines.push('');
     var mt=computeChoices(agg,score,extra,score.total+1);
@@ -1082,9 +1124,9 @@ function buildFeedbackText(name, mode){
       lines.push('');
     }
   } else {
-    if(light==='Grey'){ pushTarget('레드(30점)',30); pushTarget('앰버(50점)',50); pushTarget('그린(70점)',70); }
-    else if(light==='Red'){ pushTarget('앰버(50점)',50); pushTarget('그린(70점)',70); }
-    else { pushTarget('그린(70점)',70); }
+    if(light==='Grey'){ pushTarget('레드('+K_R+'점)',K_R); pushTarget('앰버('+K_A+'점)',K_A); pushTarget('그린('+K_G+'점)',K_G); }
+    else if(light==='Red'){ pushTarget('앰버('+K_A+'점)',K_A); pushTarget('그린('+K_G+'점)',K_G); }
+    else { pushTarget('그린('+K_G+'점)',K_G); }
   }
   lines.push('화이팅이에요!');
   lines.push('- BNI '+CHAPTER+' 챕터 송승훈');
