@@ -268,7 +268,8 @@ function membershipFee(monthKey){
 
 var MONTHLY = {}, MONTHS = [], MEMBERS = [];
 var curFilter = 'all', selName = null, selMode = 'current';
-var CACHE_KEY = 'tlg_cache_v1';
+// ★ 캐시 키는 시트 ID로 자동 분리 — 같은 도메인에 여러 챕터 앱을 올려도 서로 안 섞임
+var CACHE_KEY = 'tlg_cache_' + SHEET_ID.slice(0,10) + '_v1';
 
 // ★ 스폰서(5점) 자동 전환 스위치
 //   구글시트에 스폰서 열이 아직 없으면 → SPO_AVAILABLE=false → 95점 만점으로 계산
@@ -1086,7 +1087,7 @@ function buildFeedbackText(name, mode){
     (SPO_AVAILABLE ? score.bd.spo+'/5' : '미집계'));
   if(!SPO_AVAILABLE) lines.push('※ 스폰서 항목은 아직 집계 전이라 95점 만점 기준이에요');
   if(m.targetMonthWeeks){
-    lines.push('📅 '+m.targetMonthName+'에는 수요일이 총 '+m.targetMonthWeeks+'회 있어요 (출결 문제없다는 전제로 계산)');
+    lines.push('📅 '+m.targetMonthName+'에는 '+['일','월','화','수','목','금','토'][DOW]+'요일이 총 '+m.targetMonthWeeks+'회 있어요 (출결 문제없다는 전제로 계산)');
   }
   lines.push('');
   // 결석 소멸 일정 (지각·병가·대리는 글로벌에서 무감점)
